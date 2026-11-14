@@ -1,35 +1,62 @@
 name: Build Monitor Sir APK
+
 on:
   workflow_dispatch:
   push:
     branches: [ main ]
+
 permissions:
   contents: read
+
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-      - name: Extract Android project
+
+      - name: Find and extract Android project ZIP
+        shell: bash
         run: |
-          unzip -q MonitorSir_Android_Starter_Project.zip
-          cp -a MonitorSir_Android_Starter/. .
+          set -euo pipefail
+          ZIP_FILE="$(find . -maxdepth 1 -type f -iname '*.zip' -print -quit)"
+          if [ -z "$ZIP_FILE" ]; then
+            echo "No ZIP file found in the repository root."
+            echo "Repository files:"
+            ls -la
+            exit 1
+          fi
+          echo "Extracting: $ZIP_FILE"
+          mkdir -p extracted
+          unzip -q "$ZIP_FILE" -d extracted
+          PROJECT_DIR="$(find extracted -type f -name settings.gradle -printf '%h\n' | head -n 1)"
+          if [ -z "$PROJECT_DIR" ]; then
+            echo "Could not find settings.gradle inside the ZIP."
+            find extracted -maxdepth 4 -type f | head -n 100
+            exit 1
+          fi
+          cp -a "$PROJECT_DIR"/. .
+
       - name: Set up Java
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
+
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
+
       - name: Install Android platform
         run: sdkmanager 'platforms;android-35' 'build-tools;35.0.0'
+
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.7'
+
       - name: Build debug APK
         run: gradle --no-daemon assembleDebug
+
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
